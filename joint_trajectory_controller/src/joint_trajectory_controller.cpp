@@ -142,7 +142,6 @@ controller_interface::return_type JointTrajectoryController::update(
   {
     fill_partial_goal(*new_external_msg);
     sort_to_local_joint_order(*new_external_msg);
-    // TODO(denis): Add here integration of position and velocity
     traj_external_point_ptr_->update(*new_external_msg);
   }
 
@@ -211,6 +210,8 @@ controller_interface::return_type JointTrajectoryController::update(
                               (uint64_t)period.nanoseconds());
         }
       }
+      // TODO introduce an old-fashioned enum for joint_command_interface_ and joint_state_interface_ indices
+      // POSITION VELOCITY ACCELERATION EFFORT
       if (has_position_command_interface_)
       {
         assign_interface_from_point(joint_command_interface_[0], state_desired.positions);
@@ -297,7 +298,7 @@ controller_interface::return_type JointTrajectoryController::update(
           active_goal->setAborted(result);
           // TODO(matthew-reynolds): Need a lock-free write here
           // See https://github.com/ros-controls/ros2_controllers/issues/168
-          rt_active_goal_.writeFromNonRT(RealtimeGoalHandlePtr());
+          rt_active_goal_.reset();
 
           // check goal tolerance
         }
@@ -310,7 +311,7 @@ controller_interface::return_type JointTrajectoryController::update(
             active_goal->setSucceeded(res);
             // TODO(matthew-reynolds): Need a lock-free write here
             // See https://github.com/ros-controls/ros2_controllers/issues/168
-            rt_active_goal_.writeFromNonRT(RealtimeGoalHandlePtr());
+            rt_active_goal_.reset();
 
             RCLCPP_INFO(node_->get_logger(), "Goal reached, success!");
           }
@@ -328,7 +329,7 @@ controller_interface::return_type JointTrajectoryController::update(
               active_goal->setAborted(result);
               // TODO(matthew-reynolds): Need a lock-free write here
               // See https://github.com/ros-controls/ros2_controllers/issues/168
-              rt_active_goal_.writeFromNonRT(RealtimeGoalHandlePtr());
+              rt_active_goal_.reset();
               RCLCPP_WARN(
                 node_->get_logger(), "Aborted due goal_time_tolerance exceeding by %f seconds",
                 difference);
@@ -346,6 +347,7 @@ controller_interface::return_type JointTrajectoryController::update(
 void JointTrajectoryController::read_state_from_state_interfaces(JointTrajectoryPoint & state)
 {
   const auto joint_num = joint_names_.size();
+  // TODO make this a helper function in a header file and remove duplicate
   auto assign_point_from_interface =
     [&, joint_num](std::vector<double> & trajectory_point_interface, const auto & joint_interface) {
       for (size_t index = 0; index < joint_num; ++index)
@@ -393,6 +395,7 @@ bool JointTrajectoryController::read_state_from_command_interfaces(JointTrajecto
       }
     };
 
+  // TODO make it a separate helper function
   auto interface_has_values = [](const auto & joint_interface) {
     return std::find_if(joint_interface.begin(), joint_interface.end(), [](const auto & interface) {
              return std::isnan(interface.get().get_value());
@@ -447,7 +450,7 @@ bool JointTrajectoryController::read_state_from_command_interfaces(JointTrajecto
 
   return has_values;
 }
-
+// STOPPED here 21 April
 controller_interface::CallbackReturn JointTrajectoryController::on_configure(
   const rclcpp_lifecycle::State &)
 {
@@ -998,7 +1001,7 @@ rclcpp_action::CancelResponse JointTrajectoryController::cancel_callback(
     // Mark the current goal as canceled
     auto action_res = std::make_shared<FollowJTrajAction::Result>();
     active_goal->setCanceled(action_res);
-    rt_active_goal_.writeFromNonRT(RealtimeGoalHandlePtr());
+    rt_active_goal_.reset();
   }
   return rclcpp_action::CancelResponse::ACCEPT;
 }
@@ -1265,7 +1268,7 @@ void JointTrajectoryController::preempt_active_goal()
     action_res->set__error_code(FollowJTrajAction::Result::INVALID_GOAL);
     action_res->set__error_string("Current goal cancelled due to new incoming action.");
     active_goal->setCanceled(action_res);
-    rt_active_goal_.writeFromNonRT(RealtimeGoalHandlePtr());
+    rt_active_goal_.reset();
   }
 }
 
