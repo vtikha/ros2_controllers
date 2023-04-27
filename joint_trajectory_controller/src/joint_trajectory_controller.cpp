@@ -114,9 +114,16 @@ JointTrajectoryController::state_interface_configuration() const
 controller_interface::return_type JointTrajectoryController::update(
   const rclcpp::Time & time, const rclcpp::Duration & period)
 {
-  if (get_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE)
+  try
   {
-    return controller_interface::return_type::OK;
+    if (get_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE)
+    {
+      return controller_interface::return_type::OK;
+    }
+  }
+  catch (...)
+  {
+    return update(time, period);
   }
 
   auto compute_error_for_joint = [&](
@@ -961,16 +968,23 @@ void JointTrajectoryController::topic_callback(
 };
 
 rclcpp_action::GoalResponse JointTrajectoryController::goal_received_callback(
-  const rclcpp_action::GoalUUID &, std::shared_ptr<const FollowJTrajAction::Goal> goal)
+  const rclcpp_action::GoalUUID & uuid, std::shared_ptr<const FollowJTrajAction::Goal> goal)
 {
   RCLCPP_INFO(get_node()->get_logger(), "Received new action goal");
 
-  // Precondition: Running controller
-  if (get_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE)
+  try
   {
-    RCLCPP_ERROR(
-      get_node()->get_logger(), "Can't accept new action goals. Controller is not running.");
-    return rclcpp_action::GoalResponse::REJECT;
+    // Precondition: Running controller
+    if (get_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE)
+    {
+      RCLCPP_ERROR(
+        get_node()->get_logger(), "Can't accept new action goals. Controller is not running.");
+      return rclcpp_action::GoalResponse::REJECT;
+    }
+  }
+  catch (...)
+  {
+    return goal_received_callback(uuid, goal);
   }
 
   if (!validate_trajectory_msg(goal->trajectory))
